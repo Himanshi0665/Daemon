@@ -1,0 +1,241 @@
+// This is the complete Daemon database schema.
+// Run from the frontend directory: npm run db:push
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────
+// USER
+// ─────────────────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  email     String   @unique
+  name      String?
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  gmailAccount  GmailAccount?
+  items         Item[]
+  tasks         Task[]
+  notifications Notification[]
+  scanLogs      ScanLog[]
+  preferences   UserPreferences?
+}
+
+// ─────────────────────────────────────────────────────────
+// GMAIL OAUTH
+// ─────────────────────────────────────────────────────────
+
+model GmailAccount {
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gmailAddress   String
+  accessToken    String    @db.Text // AES-256 encrypted
+  refreshToken   String    @db.Text // AES-256 encrypted
+  tokenExpiresAt DateTime
+  lastSyncAt     DateTime?
+  historyId      String? // Used for incremental Gmail sync
+  isActive       Boolean   @default(true)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+// ─────────────────────────────────────────────────────────
+// ITEMS
+// The core entity. Everything extracted from email is an Item.
+// Jobs, Meetings, Assignments are all Items filtered by category.
+// ─────────────────────────────────────────────────────────
+
+model Item {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Source email metadata
+  gmailMessageId String   @unique
+  gmailThreadId  String?
+  subject        String
+  fromEmail      String
+  fromName       String?
+  receivedAt     DateTime
+
+  // AI extracted fields
+  category       ItemCategory
+  company        String?
+  title          String
+  description    String?  @db.Text
+  deadline       DateTime?
+  eventDate      DateTime?
+  eventTime      String?
+  meetingLink    String?
+  location       String?
+  actionRequired String?
+  isActionable   Boolean  @default(true)
+
+  // Priority and confidence
+  priority        Priority @default(MEDIUM)
+  confidenceScore Float    @default(1.0)
+  needsReview     Boolean  @default(false) // true when confidenceScore < threshold
+
+  // Status
+  status       ItemStatus @default(PENDING)
+  snoozedUntil DateTime?
+  isStarred    Boolean    @default(false)
+  isArchived   Boolean    @default(false)
+  isDone       Boolean    @default(false)
+
+  // Google Calendar
+  calendarEventId String?
+
+  tasks         Task[]
+  notifications Notification[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, status])
+  @@index([userId, deadline])
+  @@index([userId, category])
+  @@index([userId, needsReview])
+  @@index([userId, priority])
+}
+
+// ─────────────────────────────────────────────────────────
+// TASKS
+// Auto-generated from Items that have an actionRequired field.
+// ─────────────────────────────────────────────────────────
+
+model Task {
+  id       String    @id @default(cuid())
+  userId   String
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemId   String?
+  item     Item?     @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  title    String
+  dueDate  DateTime?
+  isDone   Boolean   @default(false)
+  priority Priority  @default(MEDIUM)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, isDone])
+  @@index([userId, dueDate])
+}
+
+// ─────────────────────────────────────────────────────────
+// NOTIFICATIONS
+// ─────────────────────────────────────────────────────────
+
+model Notification {
+  id     String           @id @default(cuid())
+  userId String
+  user   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  itemId String?
+  item   Item?            @relation(fields: [itemId], references: [id], onDelete: SetNull)
+  type   NotificationType
+  title  String
+  body   String
+  isRead Boolean          @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+  @@index([userId, createdAt])
+}
+
+// ─────────────────────────────────────────────────────────
+// SCAN LOGS
+// A record of every Daemon Worker run.
+// ─────────────────────────────────────────────────────────
+
+model ScanLog {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  startedAt     DateTime    @default(now())
+  completedAt   DateTime?
+  emailsScanned Int         @default(0)
+  itemsCreated  Int         @default(0)
+  itemsUpdated  Int         @default(0)
+  itemsFlagged  Int         @default(0)
+  error         String?
+  triggerType   ScanTrigger @default(DAEMON_WORKER)
+}
+
+// ─────────────────────────────────────────────────────────
+// USER PREFERENCES
+// One row per user. Created automatically on sign-up.
+// ─────────────────────────────────────────────────────────
+
+model UserPreferences {
+  id                  String   @id @default(cuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scanFrequencyMins   Int      @default(30)
+  confidenceThreshold Float    @default(0.75)
+  notifyEmail         Boolean  @default(true)
+  notifyInApp         Boolean  @default(true)
+  focusAreas          String[]
+  timezone            String   @default("UTC")
+  onboardingDone      Boolean  @default(false)
+}
+
+// ─────────────────────────────────────────────────────────
+// ENUMS
+// ─────────────────────────────────────────────────────────
+
+enum ItemCategory {
+  INTERVIEW
+  ONLINE_ASSESSMENT
+  ASSIGNMENT
+  DEADLINE
+  MEETING
+  RECRUITER
+  FORM
+  OFFER
+  REJECTION
+  PERSONAL
+  GENERAL
+}
+
+enum Priority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum ItemStatus {
+  PENDING
+  IN_PROGRESS
+  DONE
+  SNOOZED
+  ARCHIVED
+}
+
+enum NotificationType {
+  DEADLINE_CRITICAL
+  DEADLINE_TODAY
+  DEADLINE_TOMORROW
+  NEEDS_REVIEW
+  NEW_INTERVIEW
+  NEW_OFFER
+  DAEMON_SCAN_COMPLETE
+}
+
+enum ScanTrigger {
+  DAEMON_WORKER
+  MANUAL
+  WEBHOOK
+}
