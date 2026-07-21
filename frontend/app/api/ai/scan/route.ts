@@ -30,7 +30,8 @@ export async function POST(_request: NextRequest) {
       subject: email.subject,
       sender: email.senderEmail,
       snippet: email.snippet,
-      bodyText: email.bodyText
+      bodyText: email.bodyText,
+      bodyHtml: email.bodyHtml
     })
 
     if (analysis) {
