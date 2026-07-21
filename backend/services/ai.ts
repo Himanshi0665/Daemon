@@ -91,34 +91,39 @@ function sanitizeText(text: string): string {
   if (!text) return ''
   // Decode entities
   let clean = text.replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+  clean = clean.replace(/&#x?[0-9a-fA-F]+;/g, '')
   
-  // Split into lines/paragraphs
   const lines = clean.split('\n')
   const validParagraphs: string[] = []
   
   const boilerplateRegex = /unsubscribe|view in browser|privacy policy|manage preferences|webengage|click here|trouble viewing|view as webpage/i
+  const htmlTagRegex = /<\/?[a-z][\s\S]*>/i
   
   for (let line of lines) {
     let p = line.trim()
     if (!p) continue
     
-    // Remove all URLs
-    p = p.replace(/https?:\/\/[^\s]+/gi, '')
-    // Remove isolated www links
-    p = p.replace(/www\.[^\s]+/gi, '')
-    // Remove weird URL artifacts like [URL], <URL>
-    p = p.replace(/\[<.*?>\]/g, '')
-    p = p.replace(/<.*?>/g, '')
-    
-    p = p.trim()
-    
-    // Discard rules
-    if (p.length < 15) continue
+    if (p.startsWith('PUBLIC') || p.startsWith('<!DOCTYPE') || p.startsWith('<html') || p.startsWith('<img') || p.startsWith('<link')) continue
+    if (htmlTagRegex.test(p)) continue
     if (boilerplateRegex.test(p)) continue
     
-    // Check if it's mostly punctuation or non-alphabetic
+    const urlCount = (p.match(/https?:\/\/[^\s]+/gi) || []).length
+    if (urlCount > 2) continue
+    
+    p = p.replace(/https?:\/\/[^\s]+/gi, '')
+    p = p.replace(/www\.[^\s]+/gi, '')
+    p = p.replace(/\[<.*?>\]/g, '')
+    p = p.trim()
+    
+    if (p.length < 15) continue
+    
     const alphaCount = (p.match(/[a-zA-Z]/g) || []).length
-    if (alphaCount < p.length * 0.4) continue // Less than 40% alphabetical means it's garbage
+    if (alphaCount < p.length * 0.4) continue
+    
+    const uppercaseCount = (p.match(/[A-Z]/g) || []).length
+    if (alphaCount > 0 && uppercaseCount > alphaCount * 0.8) continue
+    
+    if (!/[.!?]/.test(p) && p.length < 30) continue
     
     validParagraphs.push(p)
   }
@@ -133,18 +138,30 @@ function isValidExtraction(text: string): boolean {
   return true
 }
 
-export function extractContentPipeline(emailData: { bodyText?: string | null, bodyHtml?: string | null, snippet: string }) {
-  let extracted = ''
-  let source = ''
+function isContentClean(text: string): boolean {
+  if (!text || text.trim().length === 0) return false;
   
-  // 1. bodyText priority
-  if (emailData.bodyText) {
-    extracted = sanitizeText(emailData.bodyText)
-    source = 'bodyText'
-    if (isValidExtraction(extracted)) return { extracted, source }
+  const invalidKeywords = [
+    '<!DOCTYPE', 'PUBLIC "-//W3C', '<html', '<head', '<body', '<link', '<meta', '<style', '<script', '<img',
+    'src=', 'href=', 'xmlns', 'cid:', 'Content-Type:', 'boundary=', 'MIME-Version', 'charset=', 'quoted-printable', 'data:image',
+    'https://', 'http://', '&#', '&quot;'
+  ];
+  
+  for (const kw of invalidKeywords) {
+    if (text.includes(kw)) return false;
   }
   
-  // 2. bodyHtml fallback
+  return true;
+}
+
+export function extractContentPipeline(emailData: { bodyText?: string | null, bodyHtml?: string | null, snippet: string }) {
+  let extracted = ''
+  
+  if (emailData.bodyText) {
+    extracted = sanitizeText(emailData.bodyText)
+    if (isContentClean(extracted) && isValidExtraction(extracted)) return { extracted, source: 'bodyText' }
+  }
+  
   if (emailData.bodyHtml) {
     try {
       const converted = convert(emailData.bodyHtml, {
@@ -157,18 +174,16 @@ export function extractContentPipeline(emailData: { bodyText?: string | null, bo
         ]
       })
       extracted = sanitizeText(converted)
-      source = 'bodyHtml'
-      if (isValidExtraction(extracted)) return { extracted, source }
+      if (isContentClean(extracted) && isValidExtraction(extracted)) return { extracted, source: 'bodyHtml' }
     } catch (e) {
       console.error('[ai] html-to-text failed:', e)
     }
   }
   
-  // 3. Snippet last resort
   extracted = sanitizeText(emailData.snippet)
-  source = 'snippet'
-  // Return even if invalid because we have nothing else
-  return { extracted: extracted.length > 5 ? extracted : emailData.snippet, source }
+  if (isContentClean(extracted) && extracted.length > 5) return { extracted, source: 'snippet' }
+  
+  return { extracted: null, source: 'none' }
 }
 
 export async function analyzeEmail(emailData: {
@@ -187,6 +202,22 @@ export async function analyzeEmail(emailData: {
   
   if (_debugLog) {
     _debugLog('STEP 3', { extractedReadableContent: cleanText, source })
+  }
+
+  if (!cleanText) {
+    return {
+      title: 'Email Summary',
+      category: 'GENERAL',
+      company: null,
+      description: "Unable to generate a reliable summary for this email.",
+      priority: 'LOW',
+      deadline: null,
+      eventDate: null,
+      eventTime: null,
+      actionRequired: null,
+      isActionable: false,
+      confidenceScore: 1.0
+    }
   }
 
   // Truncate safely
