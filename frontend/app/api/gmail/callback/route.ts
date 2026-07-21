@@ -5,25 +5,25 @@
  *   1. Verifies the Clerk session is still active.
  *   2. Validates the CSRF state cookie.
  *   3. Exchanges the authorization code for access + refresh tokens.
- *   4. Fetches the Gmail address from the Gmail API.
+ *   4. Resolves Clerk userId → Prisma User.id (CRITICAL).
  *   5. Encrypts and stores the tokens in the GmailAccount table.
  *   6. Clears the state cookie and redirects to the dashboard.
  *
  * All error paths redirect to /dashboard with an ?error= param
- * instead of returning error responses, so the user always ends up
- * back in the app.
+ * so the user always ends up back in the app.
  */
 import { type NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
 import { exchangeCode } from '@backend/integrations/gmail/client'
 import { upsertGmailAccount } from '@backend/repositories/gmailAccount.repository'
+import { requireUserByClerkId } from '@backend/utils/auth'
 
 export async function GET(request: NextRequest) {
   const origin = request.nextUrl.origin
 
-  const { userId } = await auth()
+  const { userId: clerkId } = await auth()
 
-  if (!userId) {
+  if (!clerkId) {
     return NextResponse.redirect(`${origin}/sign-in`)
   }
 
@@ -58,20 +58,30 @@ export async function GET(request: NextRequest) {
     return failRedirect('oauth_state_mismatch')
   }
 
+  // ── Resolve Clerk ID → Prisma User ID ────────────────────────────────────────
+  let prismaUserId: string
+  try {
+    const user = await requireUserByClerkId(clerkId)
+    prismaUserId = user.id
+  } catch (err) {
+    console.error('[gmail/callback] Could not resolve Clerk user to DB user:', err)
+    return failRedirect('user_not_found')
+  }
+
   // ── Token exchange ───────────────────────────────────────────────────────────
   try {
     const { accessToken, refreshToken, expiresAt, gmailEmail } =
       await exchangeCode(code)
 
     await upsertGmailAccount({
-      userId,
+      userId: prismaUserId, // Use the PRISMA user ID, not the Clerk ID
       gmailEmail,
       accessToken,
       refreshToken,
       expiresAt,
     })
 
-    // Success — redirect to dashboard with a flag the UI can use
+    // Success — redirect to dashboard
     const successUrl = new URL('/dashboard', origin)
     successUrl.searchParams.set('connected', 'true')
     const res = NextResponse.redirect(successUrl)

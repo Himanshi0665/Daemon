@@ -4,16 +4,20 @@ interface EmptyPageStateProps {
   icon: LucideIcon
   description: string
   phase?: string
+  actionLabel?: string
+  actionHref?: string
 }
 
 /**
- * Shared empty state for stub pages.
- * Used by all pages not yet implemented.
+ * Shared empty state for pages.
+ * Supports an optional action button.
  */
 export function EmptyPageState({
   icon: Icon,
   description,
   phase,
+  actionLabel,
+  actionHref,
 }: EmptyPageStateProps) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center text-center py-24">
@@ -21,6 +25,14 @@ export function EmptyPageState({
       <p className="text-sm text-muted-foreground max-w-[280px] leading-relaxed">
         {description}
       </p>
+      {actionLabel && actionHref && (
+        <a
+          href={actionHref}
+          className="mt-5 inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+        >
+          {actionLabel} →
+        </a>
+      )}
       {phase && (
         <span className="mt-5 text-xs text-muted-foreground/50 border border-border rounded-full px-3 py-1">
           {phase}

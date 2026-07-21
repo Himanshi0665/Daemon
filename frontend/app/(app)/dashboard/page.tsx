@@ -2,7 +2,7 @@ import { DaemonStatusPanel } from '@/components/dashboard/DaemonStatusPanel'
 import { CriticalToday } from '@/components/dashboard/CriticalToday'
 import { TodaysFocus } from '@/components/dashboard/TodaysFocus'
 import { InboxIntelligence } from '@/components/dashboard/InboxIntelligence'
-import { AIDailySummary } from '@/components/dashboard/AIDailySummary'
+import { AIDailySummaryClient } from '@/components/dashboard/AIDailySummaryClient'
 import { UpcomingTimeline } from '@/components/dashboard/UpcomingTimeline'
 import { PageHeader } from '@/components/ui/page-header'
 
@@ -35,7 +35,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Row 4 — AI daily brief */}
-      <AIDailySummary />
+      <AIDailySummaryClient />
 
       {/* Row 5 — Upcoming timeline */}
       <UpcomingTimeline />

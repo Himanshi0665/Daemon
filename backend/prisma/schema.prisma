@@ -6,8 +6,9 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 // ─────────────────────────────────────────────────────────
@@ -23,12 +24,14 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  gmailAccount  GmailAccount?
-  items         Item[]
-  tasks         Task[]
-  notifications Notification[]
-  scanLogs      ScanLog[]
-  preferences   UserPreferences?
+  gmailAccount   GmailAccount?
+  items          Item[]
+  tasks          Task[]
+  notifications  Notification[]
+  scanLogs       ScanLog[]
+  preferences    UserPreferences?
+  syncedEmails   SyncedEmail[]
+  emailSyncState EmailSyncState?
 }
 
 // ─────────────────────────────────────────────────────────
@@ -189,6 +192,61 @@ model UserPreferences {
   focusAreas          String[]
   timezone            String   @default("UTC")
   onboardingDone      Boolean  @default(false)
+}
+
+// ─────────────────────────────────────────────────────────
+// SYNCED EMAILS
+// Raw emails fetched from Gmail. Stored before AI processing.
+// ─────────────────────────────────────────────────────────
+
+model SyncedEmail {
+  id           String   @id @default(cuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  messageId    String   // Gmail message ID
+  threadId     String
+  historyId    String?
+  senderName   String?
+  senderEmail  String
+  subject      String
+  snippet      String   @db.Text
+  receivedAt   DateTime
+  internalDate String   // Gmail ms-since-epoch timestamp
+  labels       String[] // ["INBOX", "UNREAD", "IMPORTANT", ...]
+  isRead       Boolean  @default(false)
+  isStarred    Boolean  @default(false)
+
+  bodyText     String?  @db.Text
+  bodyHtml     String?  @db.Text
+
+  isProcessed  Boolean  @default(false) // for future AI extraction
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@unique([userId, messageId])
+  @@index([userId, receivedAt(sort: Desc)])
+  @@index([userId, isRead])
+  @@index([userId, isProcessed])
+}
+
+// ─────────────────────────────────────────────────────────
+// EMAIL SYNC STATE
+// Tracks the sync cursor per user for incremental Gmail sync.
+// ─────────────────────────────────────────────────────────
+
+model EmailSyncState {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lastSyncAt    DateTime?
+  lastHistoryId String?
+  nextPageToken String?
+  isSyncing     Boolean   @default(false)
+  totalSynced   Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
 // ─────────────────────────────────────────────────────────

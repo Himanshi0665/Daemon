@@ -8,9 +8,18 @@
  *  passive → text-muted-foreground       — informational
  */
 
-import type { ItemCategory } from '@/lib/mock-data'
-
-export { type ItemCategory }
+export type ItemCategory =
+  | 'INTERVIEW'
+  | 'ONLINE_ASSESSMENT'
+  | 'DEADLINE'
+  | 'OFFER'
+  | 'MEETING'
+  | 'ASSIGNMENT'
+  | 'FORM'
+  | 'RECRUITER'
+  | 'REJECTION'
+  | 'PERSONAL'
+  | 'GENERAL'
 
 type CategoryMeta = {
   label: string

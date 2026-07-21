@@ -73,7 +73,7 @@ function DashboardPreview() {
             {/* Today's focus */}
             <div className="rounded-md border border-zinc-100 p-3">
               <div className="mb-2 flex items-center justify-between">
-                <span className="text-[10px] font-semibold text-zinc-900">Today's Focus</span>
+                <span className="text-[10px] font-semibold text-zinc-900">Today&apos;s Focus</span>
                 <span className="text-[9px] text-zinc-400">1/4 done</span>
               </div>
               {[

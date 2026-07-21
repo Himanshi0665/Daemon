@@ -3,6 +3,8 @@
     "prisma": "^6.19.3"
   },
   "dependencies": {
-    "@prisma/client": "^6.19.3"
+    "@google/genai": "^2.12.0",
+    "@prisma/client": "^6.19.3",
+    "googleapis": "^173.0.0"
   }
 }

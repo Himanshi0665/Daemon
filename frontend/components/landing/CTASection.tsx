@@ -17,7 +17,7 @@ export function CTASection() {
         </h2>
         <p className="text-zinc-400 text-lg mb-10 leading-relaxed max-w-md mx-auto">
           For students, job seekers, professionals, and anyone whose inbox holds
-          opportunities they can't afford to miss.
+          opportunities they can&apos;t afford to miss.
         </p>
 
         <Link
