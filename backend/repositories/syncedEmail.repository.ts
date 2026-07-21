@@ -113,6 +113,18 @@ export async function getEmailsByUser(
     label,
   } = params
 
+  let matchingMessageIds: string[] = []
+  if (search) {
+    const matchingItems = await db.item.findMany({
+      where: {
+        userId,
+        description: { contains: search, mode: 'insensitive' }
+      },
+      select: { gmailMessageId: true }
+    })
+    matchingMessageIds = matchingItems.map(i => i.gmailMessageId)
+  }
+
   const where: Prisma.SyncedEmailWhereInput = {
     userId,
     ...(unreadOnly && { isRead: false }),
@@ -124,6 +136,7 @@ export async function getEmailsByUser(
         { senderEmail: { contains: search, mode: 'insensitive' as const } },
         { senderName: { contains: search, mode: 'insensitive' as const } },
         { snippet: { contains: search, mode: 'insensitive' as const } },
+        ...(matchingMessageIds.length > 0 ? [{ messageId: { in: matchingMessageIds } }] : [])
       ],
     }),
   }
@@ -154,7 +167,7 @@ export async function getEmailsByUser(
     where: { gmailMessageId: { in: emails.map(e => e.messageId) } },
     select: { gmailMessageId: true, category: true, actionRequired: true }
   })
-  
+
   const itemMap = new Map(items.map(i => [i.gmailMessageId, i]))
 
   const emailsWithItems = emails.map(e => {

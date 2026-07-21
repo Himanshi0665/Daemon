@@ -45,8 +45,8 @@ type Email = {
   labels: string[]
   isRead: boolean
   isStarred: boolean
-  category?: string
-  actionRequired?: string
+  category?: string | null
+  actionRequired?: string | null
 }
 
 type FilterType = 'all' | 'unread' | 'starred'
@@ -113,9 +113,22 @@ export function InboxClient({
     fetchEmails({ page, filter, search })
   }, [page, filter, search, fetchEmails])
 
+  // Debounce search input
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      if (search !== searchInput) {
+        setSearch(searchInput)
+        setPage(0)
+      }
+    }, 400)
+    return () => clearTimeout(handler)
+  }, [searchInput, search])
+
   function handleSearch() {
-    setSearch(searchInput)
-    setPage(0)
+    if (search !== searchInput) {
+      setSearch(searchInput)
+      setPage(0)
+    }
   }
 
   function handleFilterChange(f: FilterType) {
